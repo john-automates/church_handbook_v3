@@ -1,11 +1,11 @@
 import OpenAI from 'openai';
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('Missing OPENAI_API_KEY environment variable');
+if (!process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
+  throw new Error('Missing NEXT_PUBLIC_OPENAI_API_KEY environment variable');
 }
 
 export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
 });
 
-export const assistantId = process.env.ASSISTANT_ID; 
+export const assistantId = process.env.NEXT_PUBLIC_ASSISTANT_ID; 

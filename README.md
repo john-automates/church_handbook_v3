@@ -27,7 +27,8 @@ npm install
 
 3. Create a `.env.local` file with required environment variables:
 ```
-OPENAI_API_KEY=your_api_key_here
+NEXT_PUBLIC_OPENAI_API_KEY=your_api_key_here
+NEXT_PUBLIC_ASSISTANT_ID=your_assistant_id_here
 ```
 
 4. Run the development server:
