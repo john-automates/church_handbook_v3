@@ -10,6 +10,20 @@ interface Message {
   citations?: string[];
 }
 
+interface StatusResponse {
+  status: 'queued' | 'in_progress' | 'completed' | 'failed';
+  completed: boolean;
+  response: string;
+  citations: string[];
+  error?: string;
+}
+
+interface ChatResponse {
+  threadId: string;
+  runId: string;
+  error?: string;
+}
+
 const WELCOME_MESSAGE = {
   role: 'assistant' as const,
   content: "Welcome! I'm here to help you understand the General Handbook of The Church of Jesus Christ of Latter-day Saints. You can ask me questions about policies, procedures, or any specific sections of the handbook.",
@@ -23,11 +37,15 @@ const EXAMPLE_QUESTIONS = [
   "Explain the church's guidelines on music in meetings"
 ];
 
+const POLL_INTERVAL = 1000; // Poll every second
+const MAX_POLLS = 60; // Maximum number of polling attempts (60 seconds)
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState<string | null>(null);
+  const [pollCount, setPollCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -39,6 +57,35 @@ export default function Home() {
     scrollToBottom();
   }, [messages]);
 
+  const checkStatus = async (threadId: string, runId: string): Promise<StatusResponse> => {
+    const response = await fetch(`/api/chat/status?threadId=${threadId}&runId=${runId}`);
+    if (!response.ok) {
+      throw new Error('Failed to check status');
+    }
+    return response.json();
+  };
+
+  const pollStatus = async (threadId: string, runId: string): Promise<StatusResponse> => {
+    let attempts = 0;
+    
+    while (attempts < MAX_POLLS) {
+      const statusData = await checkStatus(threadId, runId);
+      
+      if (statusData.completed) {
+        if (statusData.error) {
+          throw new Error(statusData.error);
+        }
+        return statusData;
+      }
+      
+      attempts++;
+      setPollCount(attempts);
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+    }
+    
+    throw new Error('Response timed out');
+  };
+
   const handleSubmit = async (e: React.FormEvent, overrideMessage?: string) => {
     e.preventDefault();
     const messageToSend = overrideMessage || input;
@@ -46,10 +93,12 @@ export default function Home() {
 
     setInput('');
     setSelectedQuestion(null);
+    setPollCount(0);
     setMessages((prev) => [...prev, { role: 'user', content: messageToSend }]);
     setIsLoading(true);
 
     try {
+      // Step 1: Start the chat process
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -58,23 +107,29 @@ export default function Home() {
         body: JSON.stringify({ message: messageToSend }),
       });
 
-      const data = await response.json();
-      
-      if (!response.ok) throw new Error(data.error);
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
 
-      setMessages((prev) => [
-        ...prev,
-        { 
-          role: 'assistant', 
-          content: data.response,
-          citations: data.citations 
-        },
-      ]);
+      const { threadId, runId } = await response.json() as ChatResponse;
+      
+      // Step 2: Poll for completion
+      const result = await pollStatus(threadId, runId);
+
+      // Step 3: Update messages with response
+      const newMessage: Message = {
+        role: 'assistant',
+        content: result.response,
+        citations: result.citations
+      };
+
+      setMessages(prev => [...prev, newMessage]);
     } catch (error) {
       console.error('Error:', error);
       alert('Failed to send message. Please try again.');
     } finally {
       setIsLoading(false);
+      setPollCount(0);
     }
   };
 
@@ -168,7 +223,11 @@ export default function Home() {
                       </svg>
                     </div>
                     <div className="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
-                      <p className="text-gray-500 text-[15px]">Searching handbook...</p>
+                      <p className="text-gray-500 text-[15px]">
+                        {pollCount > 0 
+                          ? `Still processing... (${pollCount}s)`
+                          : 'Processing your request...'}
+                      </p>
                     </div>
                   </div>
                 </motion.div>
